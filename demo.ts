@@ -21,9 +21,9 @@ async function run(caso: string, confirmado = false) {
 
   const evidencia = parse<{ ruta: string; sha256: string }>(await tools.oc_generar_evidencia.execute({ caso }, ctx))
   if (!evidencia.ok) return { caso, validacion, error: evidencia.error }
-  const payloadResult = parse<{ payload: OrdenCompra }>(await tools.oc_construir_payload.execute({ caso, paquete: lectura.data, validacion }, ctx))
+  const payloadResult = parse<{ payload: OrdenCompra }>(await tools.oc_construir_payload.execute({ caso, paquete: lectura.data, derivados: validacion.derivados }, ctx))
   if (!payloadResult.ok) return { caso, validacion, error: payloadResult.error }
-  const creacion = parse<{ numero_oc: string; fecha: string; idempotente: boolean }>(await tools.oc_crear.execute({ caso, payload: payloadResult.data.payload, validacion, confirmado, confirmado_por: confirmado ? "demo" : undefined }, ctx))
+  const creacion = parse<{ numero_oc: string; fecha: string; idempotente: boolean }>(await tools.oc_crear.execute({ caso, payload: payloadResult.data.payload, confirmado, confirmado_por: confirmado ? "demo" : undefined }, ctx))
   return { caso, validacion, creacion, motivo: creacion.ok ? undefined : creacion.error }
 }
 

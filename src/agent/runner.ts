@@ -11,8 +11,8 @@ const definitions: ToolDefinition[] = [
   { type: "function", function: { name: "oc_leer_paquete", description: tools.oc_leer_paquete.description, parameters: { type: "object", properties: { caso: { type: "string", pattern: "^sol-00[1-6]$" } }, required: ["caso"], additionalProperties: false } } },
   { type: "function", function: { name: "oc_validar", description: tools.oc_validar.description, parameters: { type: "object", properties: { caso: { type: "string" }, paquete: { type: "object" } }, required: ["caso", "paquete"], additionalProperties: false } } },
   { type: "function", function: { name: "oc_generar_evidencia", description: tools.oc_generar_evidencia.description, parameters: { type: "object", properties: { caso: { type: "string" } }, required: ["caso"], additionalProperties: false } } },
-  { type: "function", function: { name: "oc_construir_payload", description: tools.oc_construir_payload.description, parameters: { type: "object", properties: { caso: { type: "string" }, paquete: { type: "object" }, validacion: { type: "object" } }, required: ["caso", "paquete", "validacion"], additionalProperties: false } } },
-  { type: "function", function: { name: "oc_crear", description: tools.oc_crear.description, parameters: { type: "object", properties: { caso: { type: "string" }, payload: { type: "object" }, validacion: { type: "object" }, confirmado: { type: "boolean" }, confirmado_por: { type: "string" } }, required: ["caso", "payload", "validacion"], additionalProperties: false } } },
+  { type: "function", function: { name: "oc_construir_payload", description: tools.oc_construir_payload.description, parameters: { type: "object", properties: { caso: { type: "string" }, paquete: { type: "object" }, derivados: { type: "object" } }, required: ["caso", "paquete", "derivados"], additionalProperties: false } } },
+  { type: "function", function: { name: "oc_crear", description: tools.oc_crear.description, parameters: { type: "object", properties: { caso: { type: "string" }, payload: { type: "object" }, confirmado: { type: "boolean" }, confirmado_por: { type: "string" } }, required: ["caso", "payload"], additionalProperties: false } } },
 ]
 
 export class AgentRunner {
@@ -47,7 +47,7 @@ export class AgentRunner {
         const payloadReady = visible.some((call) => call.name === "oc_construir_payload")
         const orderCreated = visible.some((call) => call.name === "oc_crear")
         if (confirmed && payloadReady && !orderCreated && !continuationRequested) {
-          history.push({ role: "user", content: "La confirmación explícita ya fue recibida. No respondas todavía: llama ahora a oc_crear con confirmado=true usando el payload y la validación disponibles." })
+          history.push({ role: "user", content: "La confirmación explícita ya fue recibida. No respondas todavía: llama ahora a oc_crear con confirmado=true usando el payload disponible." })
           continuationRequested = true
           continue
         }
@@ -66,7 +66,7 @@ export class AgentRunner {
     return { reply, toolCalls: visible, needsConfirmation: false }
   }
 
-  getSession(sessionId: string): ChatMessage[] { return this.sessions.get(sessionId) ?? [] }
+  getSession(sessionId: string): ChatMessage[] { return (this.sessions.get(sessionId) ?? []).filter((message) => message.role !== "system") }
 
   private async execute(call: ToolCall, ctx: ToolContext): Promise<{ raw: string; visible: VisibleToolCall }> {
     const tool = (tools as Record<string, ToolObject>)[call.function.name]

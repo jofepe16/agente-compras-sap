@@ -14,6 +14,8 @@ loadEnv(path.join(directory, ".env"))
 const port = Number(process.env.PORT ?? 3000)
 const model = process.env.LLM_MODEL ?? "gpt-5.6-luna"
 const apiKey = process.env.OPENAI_API_KEY
+const chatLimit = Number(process.env.MAX_CHAT_REQUESTS_PER_HOUR ?? 30)
+const chatUsage = new Map<string, { count: number; startedAt: number }>()
 const agent = apiKey
   ? new AgentRunner(directory, new OpenAiAdapter(model, apiKey), Number(process.env.MAX_AGENT_ITERATIONS ?? 12), Number(process.env.MAX_SESSION_TOKENS ?? 100_000))
   : null
@@ -37,6 +39,7 @@ const server = createServer(async (request, response) => {
       const body = z.object({ sessionId: z.string().min(1), message: z.string().min(1).max(2_000) }).safeParse(await readBody(request))
       if (!body.success) return json(response, 400, { error: "Escribe un mensaje válido." })
       if (!agent) return json(response, 503, { error: "El chat no está configurado. Usa la bandeja o configura OPENAI_API_KEY." })
+      if (!allowChat(request)) return json(response, 429, { error: "Se alcanzó el límite temporal del chat. Intenta de nuevo más tarde." })
       return json(response, 200, await agent.run(body.data.sessionId, body.data.message))
     }
 
@@ -77,6 +80,18 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
 function json(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" })
   response.end(JSON.stringify(value))
+}
+
+function allowChat(request: IncomingMessage): boolean {
+  const key = request.socket.remoteAddress ?? "local"
+  const now = Date.now()
+  const usage = chatUsage.get(key)
+  if (!usage || now - usage.startedAt >= 3_600_000) {
+    chatUsage.set(key, { count: 1, startedAt: now })
+    return true
+  }
+  usage.count += 1
+  return usage.count <= chatLimit
 }
 
 function contentType(file: string): string {

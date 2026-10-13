@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
 import { ordenCompraSchema } from "../domain/types.js"
-import type { Currency, Hallazgo, OrdenCompra, Paquete, ResultadoValidacion, Solicitud, ToolContext, ToolResponse } from "../domain/types.js"
+import type { Currency, Derivados, Hallazgo, OrdenCompra, Paquete, ResultadoValidacion, Solicitud, ToolContext, ToolResponse } from "../domain/types.js"
 import { appendCsv, appendJsonLine, isoNow, normalizeNit, normalizeText, readJson, writeJson } from "../lib/files.js"
 import { SapMockAdapter } from "../sap/mock.js"
 
@@ -14,7 +14,7 @@ type CentroCosto = { centro_costo: string; nombre: string; subareas: string[]; a
 
 const casoSchema = z.string().regex(/^sol-00[1-6]$/, "Caso inválido. Use sol-001 a sol-006.")
 const paqueteSchema = z.custom<Paquete>((value) => Boolean(value && typeof value === "object"))
-const resultadoSchema = z.custom<ResultadoValidacion>((value) => Boolean(value && typeof value === "object"))
+const derivadosSchema = z.custom<Derivados>((value) => Boolean(value && typeof value === "object"))
 
 function ok<T>(data: T): string { return JSON.stringify({ ok: true, data } satisfies ToolResponse<T>) }
 function fail(error: string): string { return JSON.stringify({ ok: false, error } satisfies ToolResponse<never>) }
@@ -161,7 +161,13 @@ export const validar = {
 }
 
 async function evidenceHash(caso: string, ctx: ToolContext): Promise<string> {
-  const file = projectPath(ctx, "out", caso, "aprobacion.txt"); try { return createHash("sha256").update(await readFile(file)).digest("hex") } catch { throw new Error("Primero debe generarse la evidencia de aprobación.") }
+  const file = projectPath(ctx, "out", caso, "aprobacion.txt")
+  try {
+    const evidence = await readFile(file, "utf8")
+    const hash = evidence.match(/SHA-256: ([a-f0-9]{64})/)?.[1]
+    if (!hash) throw new Error()
+    return hash
+  } catch { throw new Error("Primero debe generarse la evidencia de aprobación.") }
 }
 
 export const generar_evidencia = {
@@ -176,22 +182,24 @@ export const generar_evidencia = {
   },
 }
 
-function unidadPara(descripcion: string): "UN" | "H" | "MES" { const value = normalizeText(descripcion); if (value.includes("hora")) return "H"; if (value.includes("mes")) return "MES"; return "UN" }
+function unidadPara(descripcion: string): "UN" | "H" { return normalizeText(descripcion).includes("hora") ? "H" : "UN" }
 
 export const construir_payload = {
   description: "Construye y valida la vista previa de la orden SAP y guarda la trazabilidad campo a campo.",
-  args: { caso: casoSchema.describe("Caso de compra"), paquete: paqueteSchema.describe("Paquete normalizado"), validacion: resultadoSchema.describe("Resultado de oc_validar") },
-  async execute(args: { caso: string; paquete: Paquete; validacion: ResultadoValidacion }, ctx: ToolContext): Promise<string> {
+  args: { caso: casoSchema.describe("Caso de compra"), paquete: paqueteSchema.describe("Paquete normalizado"), derivados: derivadosSchema.describe("Valores calculados por oc_validar") },
+  async execute(args: { caso: string; paquete: Paquete; derivados: Derivados }, ctx: ToolContext): Promise<string> {
     try {
-      casoSchema.parse(args.caso); if (!args.validacion.apta) return fail("La solicitud tiene bloqueos y no permite construir una orden válida.")
+      casoSchema.parse(args.caso); paqueteSchema.parse(args.paquete); derivadosSchema.parse(args.derivados)
+      const validacion = await readJson<ResultadoValidacion>(projectPath(ctx, "out", args.caso, "validacion.json"))
+      if (!validacion.apta) return fail("La solicitud tiene bloqueos y no permite construir una orden válida.")
       const { solicitud, correo, cotizacion, aprobacion } = args.paquete; if (!aprobacion) return fail("Falta la aprobación.")
-      const sha256 = await evidenceHash(args.caso, ctx); const d = args.validacion.derivados
+      const sha256 = await evidenceHash(args.caso, ctx); const d = args.derivados
       const payload: OrdenCompra = {
         referencia: { solicitud_id: solicitud.solicitud_id, correo_id: correo.id, cotizacion_ref: cotizacion?.referencia ?? null }, sociedad: "1000", organizacion_compras: "1000",
         proveedor: { codigo_sap: d.codigo_proveedor!, nit: d.proveedor_nit!, nombre: solicitud.proveedor_nombre }, moneda: solicitud.moneda,
         condiciones_pago: solicitud.condiciones_pago ?? d.condiciones_pago!, aprobador: { email: aprobacion.de, fecha_aprobacion: aprobacion.fecha, evidencia_sha256: sha256 },
         posiciones: [{ numero: 10, descripcion: solicitud.descripcion.slice(0, 40), cantidad: solicitud.cantidad, unidad: unidadPara(solicitud.descripcion), precio_unitario: solicitud.valor_unitario, centro_costo: solicitud.centro_costo, subarea: solicitud.subarea, indicador_iva: solicitud.indicador_iva ?? d.indicador_iva! }],
-        excepciones: args.validacion.confirmaciones.map((item) => ({ codigo: item.codigo, detalle: item.detalle, confirmado_por: null })),
+        excepciones: validacion.confirmaciones.map((item) => ({ codigo: item.codigo, detalle: item.detalle, confirmado_por: null })),
       }
       ordenCompraSchema.parse(payload)
       const trazabilidad = { "referencia.solicitud_id": "solicitud", "referencia.correo_id": "correo", proveedor: "maestro.proveedores", moneda: "solicitud", condiciones_pago: solicitud.condiciones_pago ? "solicitud" : "derivado", aprobador: "aprobacion", posiciones: "solicitud", indicador_iva: solicitud.indicador_iva ? "solicitud" : "derivado", excepciones: "validacion" }
@@ -202,34 +210,41 @@ export const construir_payload = {
 
 export const crear = {
   description: "Crea una orden en SAP simulado; exige confirmación para excepciones y evita órdenes duplicadas.",
-  args: { caso: casoSchema.describe("Caso de compra"), payload: z.custom<OrdenCompra>().describe("Payload validado"), validacion: resultadoSchema.describe("Resultado de controles"), confirmado: z.boolean().optional().describe("Confirmación explícita de las excepciones"), confirmado_por: z.string().optional().describe("Persona que confirmó las excepciones") },
-  async execute(args: { caso: string; payload: OrdenCompra; validacion: ResultadoValidacion; confirmado?: boolean; confirmado_por?: string }, ctx: ToolContext): Promise<string> {
+  args: { caso: casoSchema.describe("Caso de compra"), payload: z.custom<OrdenCompra>().describe("Payload validado"), confirmado: z.boolean().optional().describe("Confirmación explícita de las excepciones"), confirmado_por: z.string().optional().describe("Persona que confirmó las excepciones") },
+  async execute(args: { caso: string; payload: OrdenCompra; confirmado?: boolean; confirmado_por?: string }, ctx: ToolContext): Promise<string> {
     const controlFile = projectPath(ctx, "out/control.csv"); const headers = ["solicitud_id", "resultado", "numero_oc", "retroactiva", "bloqueos", "confirmaciones", "ts"]
     try {
       casoSchema.parse(args.caso); ordenCompraSchema.parse(args.payload)
-      if (args.validacion.bloqueos.length) return fail("La solicitud conserva bloqueos y no puede crearse.")
-      if (args.validacion.confirmaciones.length && !args.confirmado) {
-        await appendCsv(controlFile, headers, [args.payload.referencia.solicitud_id, "pendiente", "", String(args.validacion.retroactiva), "", args.validacion.confirmaciones.map((item) => item.codigo).join(";"), isoNow()]); return fail("La orden requiere confirmación explícita antes de ser creada.")
+      const validacion = await readJson<ResultadoValidacion>(projectPath(ctx, "out", args.caso, "validacion.json"))
+      if (validacion.bloqueos.length) return fail("La solicitud conserva bloqueos y no puede crearse.")
+      if (validacion.confirmaciones.length && !args.confirmado) {
+        await appendCsv(controlFile, headers, [args.payload.referencia.solicitud_id, "pendiente", "", String(validacion.retroactiva), "", validacion.confirmaciones.map((item) => item.codigo).join(";"), isoNow()]); return fail("La orden requiere confirmación explícita antes de ser creada.")
       }
       const sap = new SapMockAdapter(ctx.directory); const existente = await sap.buscarOrdenPorReferencia(args.payload.referencia.solicitud_id)
       const payload = { ...args.payload, excepciones: args.payload.excepciones.map((item) => ({ ...item, confirmado_por: args.confirmado_por ?? ctx.sessionId })) }
       const result = await sap.crearOrden(payload); const idempotente = Boolean(existente)
-      await appendCsv(controlFile, headers, [payload.referencia.solicitud_id, idempotente ? "existente" : "creada", result.numero_oc, String(args.validacion.retroactiva), "", args.validacion.confirmaciones.map((item) => item.codigo).join(";"), isoNow()]); await log(ctx, "oc_crear", args.caso, true, `${idempotente ? "OC existente" : "OC creada"}: ${result.numero_oc}`)
+      await appendCsv(controlFile, headers, [payload.referencia.solicitud_id, idempotente ? "existente" : "creada", result.numero_oc, String(validacion.retroactiva), "", validacion.confirmaciones.map((item) => item.codigo).join(";"), isoNow()]); await log(ctx, "oc_crear", args.caso, true, `${idempotente ? "OC existente" : "OC creada"}: ${result.numero_oc}`)
       return ok({ ...result, idempotente })
-    } catch (error) { const message = error instanceof Error ? error.message : "No fue posible crear la orden"; await appendCsv(controlFile, headers, [args.payload?.referencia?.solicitud_id ?? args.caso, "error", "", String(args.validacion?.retroactiva ?? false), args.validacion?.bloqueos?.map((item) => item.codigo).join(";") ?? "", "", isoNow()]); await log(ctx, "oc_crear", args.caso, false, message); return fail(message) }
+    } catch (error) { const message = error instanceof Error ? error.message : "No fue posible crear la orden"; await appendCsv(controlFile, headers, [args.payload?.referencia?.solicitud_id ?? args.caso, "error", "", "false", "", "", isoNow()]); await log(ctx, "oc_crear", args.caso, false, message); return fail(message) }
   },
 }
 
 export async function procesarCaso(caso: string, ctx: ToolContext, confirmado = false) {
-  const paquete = await leerPaqueteImpl(caso, ctx); const validacion = await validarImpl(paquete, ctx)
-  const evidenciaRaw = await generar_evidencia.execute({ caso }, ctx); const evidencia = JSON.parse(evidenciaRaw) as ToolResponse<{ ruta: string; sha256: string }>
+  const lectura = JSON.parse(await leer_paquete.execute({ caso }, ctx)) as ToolResponse<Paquete>
+  if (!lectura.ok) throw new Error(lectura.error)
+  const paquete = lectura.data
+  const validacionResult = JSON.parse(await validar.execute({ caso, paquete }, ctx)) as ToolResponse<ResultadoValidacion>
+  if (!validacionResult.ok) throw new Error(validacionResult.error)
+  const validacion = validacionResult.data
   let payload: OrdenCompra | null = null
   let creacion: ToolResponse<{ numero_oc: string; fecha: string; idempotente: boolean }> | null = null
-  if (validacion.apta && evidencia.ok) {
-    const payloadRaw = await construir_payload.execute({ caso, paquete, validacion }, ctx); const parsed = JSON.parse(payloadRaw) as ToolResponse<{ payload: OrdenCompra }>
+  if (validacion.apta) {
+    const evidencia = JSON.parse(await generar_evidencia.execute({ caso }, ctx)) as ToolResponse<{ ruta: string; sha256: string }>
+    if (!evidencia.ok) return { caso, paquete, validacion, payload, creacion }
+    const payloadRaw = await construir_payload.execute({ caso, paquete, derivados: validacion.derivados }, ctx); const parsed = JSON.parse(payloadRaw) as ToolResponse<{ payload: OrdenCompra }>
     if (parsed.ok) {
       payload = parsed.data.payload
-      creacion = JSON.parse(await crear.execute({ caso, payload, validacion, confirmado, confirmado_por: confirmado ? "demo" : undefined }, ctx)) as ToolResponse<{ numero_oc: string; fecha: string; idempotente: boolean }>
+      creacion = JSON.parse(await crear.execute({ caso, payload, confirmado, confirmado_por: confirmado ? "demo" : undefined }, ctx)) as ToolResponse<{ numero_oc: string; fecha: string; idempotente: boolean }>
     }
   }
   return { caso, paquete, validacion, payload, creacion }

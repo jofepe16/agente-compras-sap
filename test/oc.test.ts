@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { cp, mkdtemp, rm } from "node:fs/promises"
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
@@ -16,6 +16,9 @@ test("los seis casos respetan bloqueos, confirmaciones e idempotencia", async ()
     const normal = await procesarCaso("sol-001", context)
     assert.equal(normal.validacion.apta, true)
     assert.equal(normal.creacion?.ok, true)
+    assert.equal(normal.payload?.posiciones[0]?.unidad, "UN")
+    const evidencia = await readFile(path.join(directory, "out/sol-001/aprobacion.txt"), "utf8")
+    assert.equal(normal.payload?.aprobador.evidencia_sha256, evidencia.match(/SHA-256: ([a-f0-9]{64})/)?.[1])
 
     const proveedorAusente = await procesarCaso("sol-002", context)
     assert.deepEqual(proveedorAusente.validacion.bloqueos.map((item) => item.codigo), ["RC1"])

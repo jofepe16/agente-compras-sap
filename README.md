@@ -36,6 +36,7 @@ Variables opcionales:
 | `LLM_MODEL` | Modelo utilizado por el adaptador | `gpt-5.6-luna` |
 | `MAX_AGENT_ITERATIONS` | Límite de llamadas por turno | `12` |
 | `MAX_SESSION_TOKENS` | Techo de seguridad por sesión | `100000` |
+| `MAX_CHAT_REQUESTS_PER_HOUR` | Límite de mensajes por IP | `30` |
 
 ## Verificación
 
@@ -56,6 +57,15 @@ npm run typecheck
 5. El número de OC aparece cuando el adaptador SAP registra la orden.
 
 El panel **Abrir asistente** permite iniciar el mismo flujo con lenguaje natural cuando `OPENAI_API_KEY` está configurada. Cada llamada a una herramienta queda visible en la conversación.
+
+## API
+
+| Ruta | Uso |
+|---|---|
+| `GET /api/health` | Estado del servicio y modo activo |
+| `POST /api/cases/:caso/process` | Flujo determinista de un caso |
+| `POST /api/chat` | Conversación con herramientas |
+| `GET /api/sessions/:id` | Historial visible de una sesión |
 
 ## Estructura
 
@@ -80,6 +90,7 @@ El repositorio incluye `render.yaml`. En Render se debe crear el servicio desde 
 ## Seguridad
 
 - La clave del proveedor existe únicamente en el backend.
+- El chat limita iteraciones, tokens por sesión y mensajes por IP.
 - Las herramientas aceptan casos de una lista cerrada para impedir recorridos de ruta.
 - Los valores de la OC provienen de fixtures o maestros, no de texto generado.
 - Las excepciones requieren confirmación explícita.

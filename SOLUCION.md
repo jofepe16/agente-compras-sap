@@ -30,15 +30,15 @@ El ciclo tiene límites configurables de iteraciones y tokens. El prompt obliga 
 
 La implementación incluye un adaptador para OpenAI y utiliza `gpt-5.6-luna` de forma predeterminada. Se eligió un modelo económico porque su función es seleccionar herramientas y explicar resultados estructurados; no debe resolver reglas financieras.
 
-La [documentación oficial de GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) consultada el 12 de octubre de 2026 publica USD 0,20 por millón de tokens de entrada y USD 1,20 por millón de tokens de salida. Para un caso conservador de 12.000 tokens de entrada acumulados y 1.500 de salida, el costo estimado es:
+La [documentación oficial de GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) consultada el 12 de octubre de 2026 publica USD 0,20 por millón de tokens de entrada y USD 1,20 por millón de tokens de salida. Para un caso conservador de 40.000 tokens de entrada acumulados y 2.000 de salida, el costo estimado es:
 
 ```text
-(12.000 × 0,20 / 1.000.000) + (1.500 × 1,20 / 1.000.000)
-= USD 0,0042 por caso
-= USD 4,20 por cada 1.000 casos
+(40.000 × 0,20 / 1.000.000) + (2.000 × 1,20 / 1.000.000)
+= USD 0,0104 por caso
+= USD 10,40 por cada 1.000 casos
 ```
 
-Es una estimación, no una tarifa fija: el valor real depende del historial y de las llamadas requeridas. El techo configurable de 100.000 tokens acumulados por sesión evita consumo indefinido sin interrumpir el flujo de herramientas; la bandeja determinista no consume tokens.
+Es una estimación, no una tarifa fija: el valor real depende del historial y de las llamadas requeridas. Los límites configurables de tokens, iteraciones y mensajes por IP evitan consumo indefinido; la bandeja determinista no consume tokens.
 
 La demo determinista no necesita modelo ni clave.
 
