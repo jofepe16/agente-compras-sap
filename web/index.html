@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Mesa operativa para validar y crear órdenes de compra.">
+  <title>Mesa de Compras</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand"><span class="brand-mark">M</span><span>Mesa de<br>Compras</span></div>
+      <nav aria-label="Navegación principal">
+        <button class="nav-item active" type="button" aria-current="page"><span>▦</span>Bandeja</button>
+        <button class="nav-item" type="button"><span>✓</span>Órdenes</button>
+        <button class="nav-item" type="button"><span>↗</span>Control</button>
+      </nav>
+      <div class="rail-footer"><span class="avatar">CO</span><div><strong>Camila Ortiz</strong><small>Analista de compras</small></div></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow">OPERACIÓN DE COMPRAS</p><h1>Bandeja de solicitudes</h1></div>
+        <div class="top-actions"><span class="health"><i></i><span id="healthText">Verificando servicio</span></span><button id="assistantToggle" class="secondary" type="button">Abrir asistente</button></div>
+      </header>
+
+      <section class="summary" aria-label="Resumen de la bandeja">
+        <article><span>Pendientes</span><strong>6</strong><small>Paquetes por revisar</small></article>
+        <article><span>Sin novedades</span><strong>1</strong><small>Lista para crear</small></article>
+        <article><span>Requieren atención</span><strong>3</strong><small>Validación humana</small></article>
+        <article><span>Bloqueadas</span><strong>2</strong><small>No permiten OC</small></article>
+      </section>
+
+      <section class="workspace">
+        <div class="inbox-panel">
+          <div class="panel-heading"><div><h2>Solicitudes recibidas</h2><p>6 solicitudes · agosto de 2026</p></div><div class="filters"><button class="active" type="button">Todas</button><button type="button">Pendientes</button></div></div>
+          <div id="caseList" class="case-list"></div>
+        </div>
+
+        <article id="caseDetail" class="detail-panel" aria-live="polite"></article>
+      </section>
+    </main>
+
+    <aside id="assistantPanel" class="assistant-panel" aria-hidden="true">
+      <div class="assistant-head"><div><span class="assistant-dot"></span><div><strong>Asistente de compras</strong><small id="assistantMode">Consultando disponibilidad…</small></div></div><button id="assistantClose" aria-label="Cerrar asistente" type="button">×</button></div>
+      <div id="messages" class="messages"><div class="message system">Puedo revisar solicitudes, explicar controles y preparar una orden. Las decisiones financieras siempre se validan con las reglas del proceso.</div></div>
+      <form id="chatForm" class="chat-form"><label for="messageInput">Mensaje</label><div><input id="messageInput" autocomplete="off" placeholder="Ej. revisa la solicitud 004"><button type="submit" aria-label="Enviar">↑</button></div></form>
+    </aside>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

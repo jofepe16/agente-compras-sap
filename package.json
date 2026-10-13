@@ -1,0 +1,26 @@
+{
+  "name": "mesa-compras-periferia",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/check-node.cjs",
+    "dev": "tsx watch src/server.ts",
+    "prestart": "node scripts/check-node.cjs",
+    "start": "tsx src/server.ts",
+    "demo": "tsx demo.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
